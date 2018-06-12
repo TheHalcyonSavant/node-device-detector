@@ -221,11 +221,13 @@ DeviceDetector.prototype.detect = function (user_agent) {
 
   if (clientData.name === undefined) {
     clientData = this.findBrowser(user_agent);
-    ret.client = {
-      name: clientData.name,
-      version: clientData.version,
-      type: clientData.type
-    };
+    if (clientData) {
+      ret.client = {
+        name: clientData.name,
+        version: clientData.version,
+        type: clientData.type
+      };
+    }
   }
   if (deviceData) {
     ret.device = {
