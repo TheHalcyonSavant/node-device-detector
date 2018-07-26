@@ -34,7 +34,7 @@ DeviceDetector.prototype.init = function () {
 };
 
 DeviceDetector.prototype.loadAppCollection = function () {
-  console.log('DeviceDetector load client/mobile_apps.yml');
+  // console.log('DeviceDetector load client/mobile_apps.yml');
   let path = BASE_REGEXES_DIR + '/client/mobile_apps.yml';
   this.app_collection = YAML.load(path);
 
@@ -42,13 +42,13 @@ DeviceDetector.prototype.loadAppCollection = function () {
 };
 
 DeviceDetector.prototype.loadBrowserCollection = function () {
-  console.log('DeviceDetector load client/browser.yml');
+  // console.log('DeviceDetector load client/browser.yml');
   let path = BASE_REGEXES_DIR + '/client/browsers.yml';
   this.browser_collection = YAML.load(path);
 };
 
 DeviceDetector.prototype.loadOsCollection = function () {
-  console.log('DeviceDetector load oss.yml');
+  // console.log('DeviceDetector load oss.yml');
   let path = BASE_REGEXES_DIR + '/oss.yml';
   this.os_collection = YAML.load(path);
 
@@ -57,7 +57,7 @@ DeviceDetector.prototype.loadOsCollection = function () {
 };
 
 DeviceDetector.prototype.loadBrandCollection = function () {
-  console.log('DeviceDetector load device/mobiles.yml');
+  // console.log('DeviceDetector load device/mobiles.yml');
   let path = BASE_REGEXES_DIR + '/device/mobiles.yml';
   this.device_collection = YAML.load(path);
 };
