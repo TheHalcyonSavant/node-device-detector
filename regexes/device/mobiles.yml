@@ -3969,6 +3969,8 @@ Motorola:
       model: 'Droid Ultra'
     - regex: '(?:MOT-|Motorola-)?XT1635(?:-0[1-3])?'
       model: 'Moto Z Play'
+    - regex: '(?:MOT-|Motorola-)?XT1710(?:-0[1-3])?'
+      model: 'Moto Z2 Play'
 
     - regex: 'Moto ([CGE]) \(([a-z0-9]+)\)( Plus)?'
       model: 'Moto $1$2$3'
