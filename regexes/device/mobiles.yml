@@ -919,6 +919,8 @@ Asus:
       model: 'ZenFone 2'
     - regex: '(?:ASUS_)(Z00YD)'
       model: '$1'
+    - regex: 'ASUS ZenFone 2E'
+      model: 'ZenFone 2E'
     - regex: '(?:ASUS_)?Z00[ERL]D'
       model: 'ZenFone 2 Laser'
     - regex: '(?:ASUS_)?T00[IQ1]'
