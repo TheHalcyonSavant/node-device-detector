@@ -1,4 +1,4 @@
-{
+module.exports = {
   "AIX": "AIX",
   "AND": "Android",
   "AMG": "AmigaOS",
@@ -24,6 +24,7 @@
   "HAI": "Haiku OS",
   "IRI": "IRIX",
   "INF": "Inferno",
+  "KOS": "KaiOS",
   "KNO": "Knoppix",
   "KBT": "Kubuntu",
   "LIN": "GNU/Linux",
@@ -77,4 +78,4 @@
   "IOS": "iOS",
   "POS": "palmOS",
   "WOS": "webOS"
-}
+};

@@ -1,246 +1,386 @@
 module.exports = DeviceDetector;
-module.exports.DeviceDetector = DeviceDetector;
 
-const YAML = require('yamljs');
+const helper = require('./parser/helper');
+// device parsers
+const MobileParser = require('./parser/device/mobile');
+const HbbTvParser = require('./parser/device/hbb-tv');
+const Console = require('./parser/device/console');
+const CarBrowser = require('./parser/device/car-browser');
+const Camera = require('./parser/device/camera');
+const PortableMediaPlayer = require('./parser/device/portable-media-player');
+// client parsers
+const MobileApp = require('./parser/client/mobile-app');
+const MediaPlayer = require('./parser/client/media-player');
+const Browser = require('./parser/client/browser');
+const Library = require('./parser/client/library');
+const FeedReader = require('./parser/client/feed-reader');
+const PIM = require('./parser/client/pim');
+// os parsers
+const OsParser = require('./parser/os-abstract-parser');
+// bot parsers
+const BotParser= require('./parser/bot-abstract-parser');
+// vendor fragment parsers
+const VendorFragmentParser = require('./parser/vendor-fragment-abstract-parser');
 
-const BASE_REGEXES_DIR = __dirname + '/regexes';
-const BASE_DATA_DIR = __dirname + '/data';
+const DEVICE_TYPE = require('./parser/const/device-type');
 
-function getBaseRegExp(str) {
-  str = str.replace(new RegExp('/', 'g'), '\\/');
-  str = str.replace(new RegExp('\\+\\+', 'g'), '+');
-  str = '(?:^|[^A-Z0-9\-_]|[^A-Z0-9\-]_|sprd-)(?:' + str + ')';
-  return new RegExp(str, 'i');
-}
+const VENDOR_FRAGMENT_PARSER = 'vendor-fragment';
+
+const DEVICE_PARSER = {
+  MOBILE: 'Mobile',
+  HBBTV: 'hbbtv',
+  CONSOLE: 'console',
+  CAR_BROWSER: 'CarBrowser',
+  CAMERA: 'Camera',
+  PORTABLE_MEDIA_PLAYER: 'PortableMediaPlayer'
+};
+const CLIENT_PARSER = {
+  FEED_READER: 'FeedReader',
+  MEDIA_PLAYER: 'MediaPlayer',
+  PIM: 'PIM',
+  MOBILE_APP: 'MobileApp',
+  LIBRARY: 'Library',
+  BROWSER: 'Browser',
+};
+
+const TV_CLIENT_LIST = ['Kylo', 'Espial TV Browser'];
+const DESKTOP_OS_LIST = ['AmigaOS', 'IBM', 'GNU/Linux', 'Mac', 'Unix', 'Windows', 'BeOS', 'Chrome OS'];
+const CHROME_CLIENT_LIST = ['Chrome', 'Chrome Mobile'];
+
 
 function DeviceDetector(options) {
+  this.osData = null;
+  this.deviceData = null;
+  this.clientData = null;
+  this.botData = null;
 
-  this.browser_collection = [];
-  this.app_collection = [];
-  this.os_collection = [];
-  this.os_systems = [];
-  this.os_families = [];
-  this.os_collection = [];
-  this.device_collection = [];
+  this.vendorParserList = {};
+  this.osParserList = {};
+  this.botParserList = {};
+  this.deviceParserList = {};
+  this.clientParserList = {};
+
+  this.skipBotDetection = helper.getPropertyValue(options, "skipBotDetection", false);
 
   this.init();
 }
 
 DeviceDetector.prototype.init = function () {
-  this.loadAppCollection();
-  this.loadBrowserCollection();
-  this.loadOsCollection();
-  this.loadBrandCollection();
+
+  this.addParseOs("Os", new OsParser);
+
+  this.addParseClient(CLIENT_PARSER.FEED_READER, new FeedReader);
+  this.addParseClient(CLIENT_PARSER.MOBILE_APP, new MobileApp);
+  this.addParseClient(CLIENT_PARSER.MEDIA_PLAYER, new MediaPlayer);
+  this.addParseClient(CLIENT_PARSER.PIM, new PIM);
+  this.addParseClient(CLIENT_PARSER.BROWSER, new Browser);
+  this.addParseClient(CLIENT_PARSER.LIBRARY, new Library);
+
+  this.addParseDevice(DEVICE_PARSER.HBBTV, new HbbTvParser);
+  this.addParseDevice(DEVICE_PARSER.CONSOLE, new Console);
+  this.addParseDevice(DEVICE_PARSER.CAR_BROWSER, new CarBrowser);
+  this.addParseDevice(DEVICE_PARSER.CAMERA, new Camera());
+  this.addParseDevice(DEVICE_PARSER.PORTABLE_MEDIA_PLAYER, new PortableMediaPlayer);
+  this.addParseDevice(DEVICE_PARSER.MOBILE, new MobileParser);
+
+  this.addParseVendor(VENDOR_FRAGMENT_PARSER, new VendorFragmentParser);
+
+  this.addParseBot("Bot", new BotParser);
 };
 
-DeviceDetector.prototype.loadAppCollection = function () {
-  // console.log('DeviceDetector load client/mobile_apps.yml');
-  let path = BASE_REGEXES_DIR + '/client/mobile_apps.yml';
-  this.app_collection = YAML.load(path);
-
-
+DeviceDetector.prototype.getParseDevice = function (name) {
+  return this.deviceParserList[name] ? this.deviceParserList[name] : null;
 };
 
-DeviceDetector.prototype.loadBrowserCollection = function () {
-  // console.log('DeviceDetector load client/browser.yml');
-  let path = BASE_REGEXES_DIR + '/client/browsers.yml';
-  this.browser_collection = YAML.load(path);
+DeviceDetector.prototype.getParseClient = function (name) {
+  return this.clientParserList[name] ? this.clientParserList[name] : null;
 };
 
-DeviceDetector.prototype.loadOsCollection = function () {
-  // console.log('DeviceDetector load oss.yml');
-  let path = BASE_REGEXES_DIR + '/oss.yml';
-  this.os_collection = YAML.load(path);
-
-  this.os_families = require(BASE_DATA_DIR + '/os_families.json');
-  this.os_systems = require(BASE_DATA_DIR + '/os_systems.json');
+DeviceDetector.prototype.getParseOs = function (name) {
+  return this.osParserList[name] ? this.osParserList[name] : null;
 };
 
-DeviceDetector.prototype.loadBrandCollection = function () {
-  // console.log('DeviceDetector load device/mobiles.yml');
-  let path = BASE_REGEXES_DIR + '/device/mobiles.yml';
-  this.device_collection = YAML.load(path);
+DeviceDetector.prototype.getParseVendor = function (name) {
+    return this.vendorParserList[name] ? this.vendorParserList[name] : null;
 };
 
-DeviceDetector.prototype.fixStringName = function (result) {
-  return result.replace(new RegExp('_', 'g'), ' ').replace(/ TD$/i, '');
+DeviceDetector.prototype.addParseDevice = function (name, parser) {
+  this.deviceParserList[name] = parser;
 };
 
-DeviceDetector.prototype.fixStringVersion = function (result) {
-  return result.replace(new RegExp('_', 'g'), '.').trim();
+DeviceDetector.prototype.addParseOs = function (name, parser) {
+  this.osParserList[name] = parser;
 };
 
-DeviceDetector.prototype.buildVersion = function (version, matches) {
-  return this.fixStringVersion(this.buildByMatch(version, matches));
+DeviceDetector.prototype.addParseBot = function (name, parser) {
+  this.botParserList[name] = parser;
 };
 
-DeviceDetector.prototype.buildModel = function (model, matches) {
-  model = this.fixStringName(this.buildByMatch(model, matches));
-  return (model === 'Build') ? null : model;
+DeviceDetector.prototype.addParseClient = function (name, parser) {
+  this.clientParserList[name] = parser;
 };
 
-DeviceDetector.prototype.buildByMatch = function (item, matches) {
-  item = item.toString();
-  if (item.indexOf('$') !== -1) {
-    for (let nb = 1; nb <= 3; nb++) {
-      if (item.indexOf('$' + nb) === -1) {
-        continue;
-      }
-      let replace = (matches[nb] !== undefined) ? matches[nb] : '';
-      item = item.replace('$' + nb, replace);
+DeviceDetector.prototype.addParseVendor = function (name, parser) {
+    this.vendorParserList[name] = parser;
+};
+
+/**
+ * parse os
+ */
+DeviceDetector.prototype.parseOs = function () {
+  for (let name in this.osParserList) {
+    let parser = this.osParserList[name];
+    let result = parser.parse(this.userAgent);
+    if (result) {
+      this.osData = parser.getParseData();
+      break;
     }
   }
-  return item;
 };
 
-DeviceDetector.prototype.findDevice = function (userAgent) {
-
-
-  for (let brand in this.device_collection) {
-
-    let match = getBaseRegExp(this.device_collection[brand]['regex']).exec(userAgent);
-    let deviceType = this.device_collection[brand]['device'];
-    let model = '';
-
-    if (match) {
-      if (this.device_collection[brand]['models'] !== undefined) {
-        let models = this.device_collection[brand]['models'];
-        for (let i = 0, l = models.length; i < l; i++) {
-          let data = models[i];
-          let modelMatch = getBaseRegExp(data.regex).exec(userAgent);
-          if (modelMatch) {
-            model = this.buildModel(data.model, modelMatch);
-            if (data.device !== undefined) {
-              deviceType = data.device;
-            }
-            break;
-          }
-        }
-      } else if (this.device_collection[brand]['model'] !== undefined) {
-        model = this.buildModel(this.device_collection[brand]['model'], match);
-      }
-      return {
-        brand: String(brand).trim(),
-        model: String(model).trim(),
-        type: deviceType
-      };
-    }
-  }
-  return null;
+DeviceDetector.prototype.getDeviceAttr = function (attr, defaultValue) {
+  return this.deviceData && this.deviceData[attr] ? this.deviceData[attr] : defaultValue;
 };
 
-DeviceDetector.prototype.findApp = function (userAgent) {
-  for (let i = 0, l = this.app_collection.length; i < l; i++) {
-    let item = this.app_collection[i];
-    let regex = getBaseRegExp(item.regex);
-    let match;
-    if (match = regex.exec(userAgent)) {
-      return {
-        name: this.buildByMatch(item.name, match),
-        version: this.buildVersion(item.version, match),
-        type: 'mobile app'
-      }
-    }
-  }
-  return {};
+DeviceDetector.prototype.getOsAttr = function (attr, defaultValue) {
+  return this.osData && this.osData[attr] ? this.osData[attr] : defaultValue;
 };
 
+DeviceDetector.prototype.getClientAttr = function (attr, defaultValue) {
+  return this.clientData && this.clientData[attr] ? this.clientData[attr] : defaultValue;
+};
 
-DeviceDetector.prototype.findBrowser = function (user_agent) {
-  for (let i = 0, l = this.browser_collection.length; i < l; i++) {
-    let item = this.browser_collection[i];
-    let regex = getBaseRegExp(item.regex);
-    let match;
-    if (match = regex.exec(user_agent)) {
-      return {
-        name: this.buildByMatch(item.name, match),
-        version: this.buildVersion(item.version, match),
-        type: 'browser'
-      }
+/**
+ * parse device
+ */
+DeviceDetector.prototype.parseDeviceType = function () {
+  let osName = this.getOsAttr('name', '');
+  let osFamily = this.getOsAttr('family', '');
+  let osShortName = this.getOsAttr('short_name', '');
+  let osVersion = this.getOsAttr('version', '');
+  let clientName = this.getClientAttr('name', '');
+  let deviceType = this.getDeviceAttr('type', '');
+
+  if (this.deviceData.id === '' && ['ATV', 'IOS', 'MAC'].indexOf(osShortName) !== -1) {
+    this.deviceData.id = 'AP';
+  }
+
+  if (deviceType === '' && this.isAndroid() && CHROME_CLIENT_LIST.indexOf(clientName) !== -1) {
+    if (helper.matchUserAgent('Chrome/[\\.0-9]* Mobile', this.userAgent) !== null) {
+      deviceType = DEVICE_TYPE.SMARTPHONE
+    } else if (helper.matchUserAgent('Chrome/[\.0-9]* (?!Mobile)', this.userAgent) !== null) {
+      deviceType = DEVICE_TYPE.TABLET
     }
   }
-  return null;
+
+  if (deviceType === '' && (helper.hasAndroidTableFragment(this.userAgent) || helper.hasOperaTableFragment(this.userAgent)  )) {
+    deviceType = DEVICE_TYPE.TABLET;
+  }
+
+  if (deviceType === '' && helper.hasAndroidMobileFragment(this.userAgent)) {
+    deviceType = DEVICE_TYPE.SMARTPHONE;
+  }
+
+  if (deviceType === '' && osShortName === 'AND' && osVersion !== '') {
+    if (helper.versionCompare(osVersion, '2.0') === -1) {
+      deviceType = DEVICE_TYPE.SMARTPHONE;
+    } else if (helper.versionCompare(osVersion, '3.0') >= 0 && helper.versionCompare(osVersion, '4.0') === -1) {
+      deviceType = DEVICE_TYPE.TABLET;
+    }
+  }
+
+  if (deviceType === DEVICE_TYPE.FEATURE_PHONE && this.isAndroid()) {
+    deviceType = DEVICE_TYPE.SMARTPHONE;
+  }
+
+  if (deviceType === '' && (osShortName === 'WRT' || (osShortName === 'WIN' && helper.versionCompare(osVersion, '8.0'))) && helper.hasTouchFragment(this.userAgent)) {
+    deviceType = DEVICE_TYPE.TABLET;
+  }
+
+  if (helper.hasOperaTVStoreFragment(this.userAgent)) {
+    deviceType = DEVICE_TYPE.TABLET;
+  }
+
+  if (helper.hasOperaTVStoreFragment(this.userAgent)) {
+    deviceType = DEVICE_TYPE.TV;
+  }
+
+  if (deviceType === '' && TV_CLIENT_LIST.indexOf(clientName) !== -1) {
+    deviceType = DEVICE_TYPE.TV;
+  }
+
+  if (deviceType === '' && DESKTOP_OS_LIST.indexOf(osFamily) !== -1) {
+    deviceType = DEVICE_TYPE.DESKTOP;
+  }
+
+  this.deviceData.type = deviceType;
+};
+
+DeviceDetector.prototype.parseDevice = function () {
+  for (let name in this.deviceParserList) {
+    let parser = this.deviceParserList[name];
+    let result = parser.parse(this.userAgent);
+    if (result) {
+      this.deviceData = parser.getParseData();
+      break;
+    }
+  }
+
+  if(this.deviceData.brand === ''){
+      let parser = this.getParseVendor(VENDOR_FRAGMENT_PARSER);
+      let result = parser.parse(this.userAgent);
+      if (result) {
+          let vendorData = parser.getParseData();
+
+          this.deviceData.brand = vendorData.name;
+          this.deviceData.id = vendorData.id;
+      }
+  }
+};
+
+DeviceDetector.prototype.parseBot = function () {
+  if(this.skipBotDetection){
+    return;
+  }
+  for (let name in this.botParserList) {
+    let parser = this.botParserList[name];
+    let result = parser.parse(this.userAgent);
+    if (result) {
+      this.botData = parser.getParseData();
+      break;
+    }
+  }
+};
+
+/**
+ * parse client
+ */
+DeviceDetector.prototype.parseClient = function () {
+  for (let name in this.clientParserList) {
+    let parser = this.clientParserList[name];
+    let result = parser.parse(this.userAgent);
+    if (result) {
+      this.clientData = parser.getParseData();
+      break;
+    }
+  }
 };
 
 
 /**
  * @param userAgent
- * @return {{name: string, version: string, platform: string, short_name: string}}|null
+ * @return {{os: (null|*), device: (null|*), client: (null|*)}}
  */
-DeviceDetector.prototype.findOs = function (userAgent) {
-  for (let i = 0, l = this.os_collection.length; i < l; i++) {
-    let item = this.os_collection[i];
-    let regex = getBaseRegExp(item.regex);
-    let match;
-    if (match = regex.exec(userAgent)) {
+DeviceDetector.prototype.detect = function (userAgent) {
+  this.reset();
+  this.userAgent = userAgent;
 
-      let name = this.buildByMatch(item.name, match);
-      let short = 'UNK';
+  this.parseOs();
+  this.parseClient();
+  this.parseDevice();
+  this.parseDeviceType();
+  this.parseBot();
 
-      for(let key in this.os_systems){
-        if (String(name).toLowerCase() === String(this.os_systems[key]).toLowerCase()) {
-          name = this.os_systems[key];
-          short = key;
-          break;
-        }
-      }
+  // let ret = {
+  //   os: this.osData
+  // };
 
-      return {
-        name: name,
-        version: this.buildVersion(item.version, match),
-        platform: this.findPlatform(userAgent),
-        short_name: short
-      }
-    }
-  }
-  return null;
-};
+  // if (clientData.name === undefined) {
+  //   clientData = this.findBrowser(user_agent);
+  //   if (clientData) {
+  //     ret.client = {
+  //       name: clientData.name,
+  //       version: clientData.version,
+  //       type: clientData.type
+  //     };
+  //   }
+  // }
+  // if (deviceData) {
+  //   ret.device = {
+  //     brand: deviceData.brand,
+  //     model: deviceData.model,
+  //     type: deviceData.type,
+  //   };
+  // }
 
-/**
- * @param userAgent
- * @return {*}
- */
-DeviceDetector.prototype.findPlatform = function (userAgent) {
-  if (/arm/i.test(userAgent)) {
-    return 'ARM';
-  } else if (/WOW64|x64|win64|amd64|x86_64/i.test(userAgent)) {
-    return 'x64';
-  } else if (/i[0-9]86|i86pc/i.test(userAgent)) {
-    return 'x86';
-  }
-  return '';
-};
-
-DeviceDetector.prototype.detect = function (user_agent) {
-  let osData = this.findOs(user_agent);
-  let clientData = this.findApp(user_agent);
-  let deviceData = this.findDevice(user_agent);
-  let ret = {
-    os: osData
+  return {
+    os: this.osData,
+    device: this.deviceData,
+    client: this.clientData
   };
-
-  if (clientData.name === undefined) {
-    clientData = this.findBrowser(user_agent);
-    if (clientData) {
-      ret.client = {
-        name: clientData.name,
-        version: clientData.version,
-        type: clientData.type
-      };
-    }
-  }
-  if (deviceData) {
-    ret.device = {
-      brand: deviceData.brand,
-      model: deviceData.model,
-      type: deviceData.type,
-    };
-  }
-
-  return ret;
 };
 
+/**
+ * @return {boolean}
+ */
+DeviceDetector.prototype.isBot = function () {
+  return this.botData !== null;
+};
 
+/**
+ * is device type desktop
+ * @return {boolean}
+ */
+DeviceDetector.prototype.isDesktop = function () {
+  return !this.isMobile() && !this.isTabled() && !this.isPhablet();
+};
 
+/**
+ * is device type mobile
+ * @return {boolean}
+ */
+DeviceDetector.prototype.isMobile = function () {
+  let type = this.getDeviceAttr('type', '');
+  return [DEVICE_TYPE.SMARTPHONE, DEVICE_TYPE.FEATURE_PHONE].indexOf(type) !== -1;
+};
 
+/**
+ * is device type table
+ * @return {boolean}
+ */
+DeviceDetector.prototype.isTabled = function () {
+  let type = this.getDeviceAttr('type', '');
+  return [DEVICE_TYPE.TABLET].indexOf(type) !== -1;
+};
 
+/**
+ * is device type phablet
+ * @return {boolean}
+ */
+DeviceDetector.prototype.isPhablet = function () {
+  let type = this.getDeviceAttr('type', '');
+  return [DEVICE_TYPE.PHABLET].indexOf(type) !== -1;
+};
+/**
+ * is device type android table
+ * @return {boolean}
+ */
+DeviceDetector.prototype.isAndroid = function () {
+  let osFamily = this.getOsAttr('family', '');
+  return osFamily === 'Android';
+};
+
+/**
+ * is device type apple table
+ * @return {boolean}
+ */
+DeviceDetector.prototype.isIOS = function () {
+  let osFamily = this.getOsAttr('family', '');
+  return osFamily === 'iOS';
+};
+
+/**
+ * reset detect result
+ */
+DeviceDetector.prototype.reset = function () {
+  this.botData = null;
+  this.userAgent = null;
+  this.osData = null;
+  this.clientData = null;
+  this.deviceData = {
+    id: '',
+    type: '',
+    brand: '',
+    model: ''
+  };
+};
